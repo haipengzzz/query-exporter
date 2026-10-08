@@ -57,13 +57,13 @@ jobs:
               if attempt and attempt % 12 == 0:
                   subprocess.run(['docker','logs','--tail','20','ob-driver-test'])
               try:
-                  c=pymysql.connect(host="127.0.0.1",port=2881,user="root@sys",password="",connect_timeout=3,read_timeout=30,autocommit=True)
+                  c=pymysql.connect(host="127.0.0.1",port=2881,user="root@test",password="",connect_timeout=3,read_timeout=30,autocommit=True)
                   with c.cursor() as x:
                       x.execute("SELECT VERSION()")
                       version=x.fetchone()[0]
                       print("LIVE OCEANBASE VERSION:",version,flush=True)
                       x.execute("SELECT 'foo' AS label, 1.0 AS value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0")
-                      rows=x.fetchall()
+                      rows=[[row[0],float(row[1])] for row in x.fetchall()]
                   c.close()
                   Path("results/live-database.json").write_text(json.dumps({"version":version,"rows":rows},indent=2))
                   break
@@ -85,10 +85,10 @@ jobs:
           for scheme in ["oceanbase","oceanbase_py"]:
               item={"scheme":scheme}
               try:
-                  e=create_engine(URL.create(scheme,username="root@sys",password="",host="127.0.0.1",port=2881,database="oceanbase"))
+                  e=create_engine(URL.create(scheme,username="root@test",password="",host="127.0.0.1",port=2881,database="oceanbase"))
                   with e.connect() as c:
                       item["version"]=c.execute(text("SELECT VERSION()")).scalar()
-                      item["rows"]=[list(r) for r in c.execute(text("SELECT 'foo' AS label, 1.0 AS value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"))]
+                      item["rows"]=[[r[0],float(r[1])] for r in c.execute(text("SELECT 'foo' AS label, 1.0 AS value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"))]
                   e.dispose()
                   item["ok"]=True
               except Exception:
@@ -97,7 +97,7 @@ jobs:
               results.append(item)
               print(json.dumps(item,indent=2),flush=True)
           Path("results/sqlalchemy.json").write_text(json.dumps(results,indent=2))
-          dsn=URL.create("oceanbase",username="root@sys",password="",host="127.0.0.1",port=2881,database="oceanbase").render_as_string(hide_password=False)
+          dsn=URL.create("oceanbase",username="root@test",password="",host="127.0.0.1",port=2881,database="oceanbase").render_as_string(hide_password=False)
           config={"databases":{"ob":{"dsn":dsn}},"metrics":{"native_value":{"type":"gauge","labels":["label"]}},"queries":{"probe":{"databases":["ob"],"metrics":["native_value"],"sql":"SELECT 'foo' AS label, 1.0 AS native_value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"}}}
           import yaml
           Path("results/exporter.yaml").write_text(yaml.safe_dump(config))
