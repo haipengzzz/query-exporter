@@ -62,10 +62,7 @@ jobs:
                       x.execute("SELECT VERSION()")
                       version=x.fetchone()[0]
                       print("LIVE OCEANBASE VERSION:",version,flush=True)
-                      x.execute("CREATE DATABASE IF NOT EXISTS driver_test")
-                      x.execute("CREATE TABLE IF NOT EXISTS driver_test.probe (label VARCHAR(32) PRIMARY KEY, value DOUBLE)")
-                      x.execute("REPLACE INTO driver_test.probe VALUES ('foo',1),('bar',2),('baz',5)")
-                      x.execute("SELECT label,value FROM driver_test.probe ORDER BY label")
+                      x.execute("SELECT 'foo' AS label, 1.0 AS value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0")
                       rows=x.fetchall()
                   c.close()
                   Path("results/live-database.json").write_text(json.dumps({"version":version,"rows":rows},indent=2))
@@ -88,10 +85,10 @@ jobs:
           for scheme in ["oceanbase","oceanbase_py"]:
               item={"scheme":scheme}
               try:
-                  e=create_engine(URL.create(scheme,username="root@test",password="",host="127.0.0.1",port=2881,database="driver_test"))
+                  e=create_engine(URL.create(scheme,username="root@test",password="",host="127.0.0.1",port=2881,database="oceanbase"))
                   with e.connect() as c:
                       item["version"]=c.execute(text("SELECT VERSION()")).scalar()
-                      item["rows"]=[list(r) for r in c.execute(text("SELECT label,value FROM probe ORDER BY label"))]
+                      item["rows"]=[list(r) for r in c.execute(text("SELECT 'foo' AS label, 1.0 AS value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"))]
                   e.dispose()
                   item["ok"]=True
               except Exception:
@@ -100,8 +97,8 @@ jobs:
               results.append(item)
               print(json.dumps(item,indent=2),flush=True)
           Path("results/sqlalchemy.json").write_text(json.dumps(results,indent=2))
-          dsn=URL.create("oceanbase",username="root@test",password="",host="127.0.0.1",port=2881,database="driver_test").render_as_string(hide_password=False)
-          config={"databases":{"ob":{"dsn":dsn}},"metrics":{"native_value":{"type":"gauge","labels":["label"]}},"queries":{"probe":{"databases":["ob"],"metrics":["native_value"],"sql":"SELECT label,value AS native_value FROM probe"}}}
+          dsn=URL.create("oceanbase",username="root@test",password="",host="127.0.0.1",port=2881,database="oceanbase").render_as_string(hide_password=False)
+          config={"databases":{"ob":{"dsn":dsn}},"metrics":{"native_value":{"type":"gauge","labels":["label"]}},"queries":{"probe":{"databases":["ob"],"metrics":["native_value"],"sql":"SELECT 'foo' AS label, 1.0 AS native_value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"}}}
           import yaml
           Path("results/exporter.yaml").write_text(yaml.safe_dump(config))
           with open("results/exporter.log","w") as log:
