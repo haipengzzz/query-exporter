@@ -40,7 +40,7 @@ jobs:
         run: |
           docker run -d --name ob-driver-test -p 127.0.0.1:2881:2881 \
             -e MODE=MINI -e OB_MEMORY_LIMIT=6G -e OB_DATAFILE_SIZE=2G \
-            -e OB_LOG_DISK_SIZE=12G -e OB_TENANT_MEMORY_SIZE=2G \
+            -e OB_LOG_DISK_SIZE=12G -e OB_TENANT_MEMORY_SIZE=3G -e OB_TENANT_MIN_CPU=2 \
             oceanbase/oceanbase-ce:latest
           docker inspect ob-driver-test > results/container.json
       - name: Wait for real SQL connection
@@ -57,7 +57,7 @@ jobs:
               if attempt and attempt % 12 == 0:
                   subprocess.run(['docker','logs','--tail','20','ob-driver-test'])
               try:
-                  c=pymysql.connect(host="127.0.0.1",port=2881,user="root@test",password="",connect_timeout=3,read_timeout=10,autocommit=True)
+                  c=pymysql.connect(host="127.0.0.1",port=2881,user="root@sys",password="",connect_timeout=3,read_timeout=30,autocommit=True)
                   with c.cursor() as x:
                       x.execute("SELECT VERSION()")
                       version=x.fetchone()[0]
@@ -85,7 +85,7 @@ jobs:
           for scheme in ["oceanbase","oceanbase_py"]:
               item={"scheme":scheme}
               try:
-                  e=create_engine(URL.create(scheme,username="root@test",password="",host="127.0.0.1",port=2881,database="oceanbase"))
+                  e=create_engine(URL.create(scheme,username="root@sys",password="",host="127.0.0.1",port=2881,database="oceanbase"))
                   with e.connect() as c:
                       item["version"]=c.execute(text("SELECT VERSION()")).scalar()
                       item["rows"]=[list(r) for r in c.execute(text("SELECT 'foo' AS label, 1.0 AS value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"))]
@@ -97,7 +97,7 @@ jobs:
               results.append(item)
               print(json.dumps(item,indent=2),flush=True)
           Path("results/sqlalchemy.json").write_text(json.dumps(results,indent=2))
-          dsn=URL.create("oceanbase",username="root@test",password="",host="127.0.0.1",port=2881,database="oceanbase").render_as_string(hide_password=False)
+          dsn=URL.create("oceanbase",username="root@sys",password="",host="127.0.0.1",port=2881,database="oceanbase").render_as_string(hide_password=False)
           config={"databases":{"ob":{"dsn":dsn}},"metrics":{"native_value":{"type":"gauge","labels":["label"]}},"queries":{"probe":{"databases":["ob"],"metrics":["native_value"],"sql":"SELECT 'foo' AS label, 1.0 AS native_value UNION ALL SELECT 'bar', 2.0 UNION ALL SELECT 'baz', 5.0"}}}
           import yaml
           Path("results/exporter.yaml").write_text(yaml.safe_dump(config))
@@ -130,6 +130,7 @@ jobs:
         run: |
           docker logs ob-driver-test > results/oceanbase-console.log 2>&1 || true
           docker cp ob-driver-test:/root/ob/log results/oceanbase-server-log 2>/dev/null || true
+          docker cp ob-driver-test:/root/obcluster/log results/oceanbase-server-log-alt 2>/dev/null || true
           docker cp ob-driver-test:/root/.obd/log results/obd-log 2>/dev/null || true
           docker inspect ob-driver-test > results/container-final.json 2>/dev/null || true
           cat results/sqlalchemy.json 2>/dev/null || true
