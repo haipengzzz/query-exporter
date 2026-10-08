@@ -4,11 +4,21 @@ on:
     branches: [test/oceanbase-driver-20261008]
 permissions:
   contents: read
+  actions: write
+concurrency:
+  group: oceanbase-driver-test
+  cancel-in-progress: true
 jobs:
   oceanbase:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Cancel superseded test attempts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST repos/haipengzzz/query-exporter/actions/runs/37752900253/cancel || true
+          gh api -X POST repos/haipengzzz/query-exporter/actions/runs/37752957443/cancel || true
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -36,10 +46,16 @@ jobs:
       - name: Wait for real SQL connection
         run: |
           python - <<'PY'
-          import time, pymysql, json
+          import time, pymysql, json, subprocess
           from pathlib import Path
           last = None
-          for attempt in range(180):
+          for attempt in range(96):
+              state=subprocess.run(['docker','inspect','--format','{{.State.Running}}','ob-driver-test'],capture_output=True,text=True)
+              if state.stdout.strip()!='true':
+                  subprocess.run(['docker','logs','ob-driver-test'])
+                  raise RuntimeError('OceanBase container exited during bootstrap')
+              if attempt and attempt % 12 == 0:
+                  subprocess.run(['docker','logs','--tail','20','ob-driver-test'])
               try:
                   c=pymysql.connect(host="127.0.0.1",port=2881,user="root@test",password="",connect_timeout=3,read_timeout=10,autocommit=True)
                   with c.cursor() as x:
